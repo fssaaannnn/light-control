@@ -1,41 +1,47 @@
 
+#include <PwmControl.h>
 #include <httplib.h>
 
-#define HTTP_PORT 8090
+#define HTTP_PORT 80
+#define LC_PWM_FREQ 400
 
 int main(int argc, char *argv[]) {
+    auto pwmControl = LC::PwmFactory().createPwmControl();
+
     httplib::Server server;
 
-    server.Get("/hi", [](const httplib::Request &req, httplib::Response &res) {
-        res.set_content("Hello World!", "text/plain");
+    server.Get("/on", [&pwmControl](const httplib::Request &req,
+                                    httplib::Response &res) {
+        std::vector<LC::PwmParameter> params{
+            LC::PwmParameter(12, LC_PWM_FREQ, 1000000),
+            LC::PwmParameter(13, LC_PWM_FREQ, 1000000)};
+        pwmControl->set(params);
+        res.set_content(R"({"status":"ok"})", "application/json");
     });
 
-    // Match the request path against a regular expression
-    // and extract its captures
-    server.Get(R"(/numbers/(\d+))",
-               [&](const httplib::Request &req, httplib::Response &res) {
-                   auto numbers = req.matches[1];
-                   res.set_content(numbers, "text/plain");
-               });
+    server.Get("/off", [&pwmControl](const httplib::Request &req,
+                                     httplib::Response &res) {
+        std::vector<LC::PwmParameter> params{
+            LC::PwmParameter(12, LC_PWM_FREQ, 0),
+            LC::PwmParameter(13, LC_PWM_FREQ, 0)};
+        pwmControl->set(params);
+        res.set_content(R"({"status":"ok"})", "application/json");
+    });
 
-    // Capture the second segment of the request path as "id" path param
-    server.Get("/users/:id",
-               [&](const httplib::Request &req, httplib::Response &res) {
-                   auto user_id = req.path_params.at("id");
-                   res.set_content(user_id, "text/plain");
-               });
-
-    // Extract values from HTTP headers and URL query params
-    server.Get("/body-header-param",
-               [](const httplib::Request &req, httplib::Response &res) {
-                   if (req.has_header("Content-Length")) {
-                       auto val = req.get_header_value("Content-Length");
-                   }
-                   if (req.has_param("key")) {
-                       auto val = req.get_param_value("key");
-                   }
-                   res.set_content(req.body, "text/plain");
-               });
+    server.Post("/pwm", [&pwmControl](const httplib::Request &req,
+                                      httplib::Response &res) {
+        std::vector<LC::PwmParameter> params;
+        if (req.has_param("gpio12duty")) {
+            auto val = req.get_param_value("gpio12duty");
+            params.emplace_back(LC::PwmParameter(12, 400, std::stoi(val)));
+        }
+        if (req.has_param("gpio13duty")) {
+            auto val = req.get_param_value("gpio13duty");
+            params.emplace_back(LC::PwmParameter(13, 400, std::stoi(val)));
+        }
+        pwmControl->set(params);
+        res.set_content(R"({"status":"ok"})", "application/json");
+    });
 
     server.Get("/stop", [&](const httplib::Request &req,
                             httplib::Response &res) { server.stop(); });
